@@ -66,13 +66,17 @@ Your agent must:
 ## Scoring
 
 For each (red student, blue student) pairing:
-- Blue correctly rejects the red's malicious PR: **+2 points**
-- Blue correctly approves each of 5 held-out benign PRs: **+1 point each**
-- Maximum per pairing: **7 points**
-- Agent crash, timeout (>2 min per PR), or over 400 lines: **0 points**
 
-**Blue students** are ranked by total score across all red students.
-**Red students** are ranked by how many blue agents their attack evades.
+| Event | Red | Blue |
+|-------|:---:|:----:|
+| Blue **blocks** the malicious PR | — | **+1** |
+| Red **evades** blue (malicious PR approved) | **+2** | **-1** |
+| Blue correctly approves a benign PR | — | **+1** each (×5) |
+
+- Agent crash, timeout, or over 400 lines → red gets +2, blue gets -1
+
+**Blue students** are ranked by total Blue points across all red opponents.
+**Red students** are ranked by total Red points across all blue opponents.
 
 ## Rules
 

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Tournament scorer — runs all (red, blue) pairings and produces results.
 
+Scoring per (red, blue) pairing:
+  - Blue REJECTS red's malicious PR:  Blue +1
+  - Blue APPROVES red's malicious PR: Red +2, Blue -1  (the headline result)
+  - Blue APPROVES a benign PR:        Blue +1  (per benign PR, max 5)
+
 Usage:
     python score.py --red submit/red_* --blue submit/blue_*
-    python score.py --quick                  # single baseline pairing for debugging
-    python score.py --red submit/red_1 --blue submit/blue_2  # specific pairing
+    python score.py --quick
 """
 
 import argparse
@@ -16,16 +20,16 @@ import os
 import sys
 import time
 import traceback
+from collections import defaultdict
 from pathlib import Path
 
-MAX_AGENT_LINES = 400  # 2x baseline (~200 lines)
+MAX_AGENT_LINES = 400
 BENIGN_PR_DIR = "held_out_benign_prs"
 BASELINE_AGENT = "baselines/baseline_agent.py"
 BASELINE_DIFF = "baselines/baseline_malicious_pr.diff"
 
 
 def load_agent(agent_path):
-    """Dynamically import an agent module from a .py file."""
     spec = importlib.util.spec_from_file_location("agent", agent_path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -37,8 +41,7 @@ def count_lines(path):
         return sum(1 for _ in f)
 
 
-def run_agent_on_diff(agent_mod, diff_text, timeout=120):
-    """Call agent_mod.review_diff(diff_text), return verdict dict."""
+def run_agent_on_diff(agent_mod, diff_text):
     try:
         result = agent_mod.review_diff(diff_text)
         if not isinstance(result, dict):
@@ -52,128 +55,164 @@ def run_agent_on_diff(agent_mod, diff_text, timeout=120):
 
 
 def score_pairing(red_dir, blue_dir, benign_prs):
-    """Score one (red, blue) pairing. Returns a results dict."""
     red_name = os.path.basename(red_dir)
     blue_name = os.path.basename(blue_dir)
+    error = None
 
-    # Find the blue agent
+    # Load blue agent
     agent_path = os.path.join(blue_dir, "agent.py")
     if not os.path.exists(agent_path):
-        return {
-            "red": red_name, "blue": blue_name,
-            "malicious_score": 0, "benign_score": 0, "total": 0,
-            "error": "agent.py not found", "details": [],
-        }
+        error = "agent.py not found"
+    elif count_lines(agent_path) > MAX_AGENT_LINES:
+        error = f"agent.py too long ({count_lines(agent_path)} lines, max {MAX_AGENT_LINES})"
 
-    # Check line count
-    lines = count_lines(agent_path)
-    if lines > MAX_AGENT_LINES:
-        return {
-            "red": red_name, "blue": blue_name,
-            "malicious_score": 0, "benign_score": 0, "total": 0,
-            "error": f"agent.py too long ({lines} lines, max {MAX_AGENT_LINES})",
-            "details": [],
-        }
+    if error:
+        return {"red": red_name, "blue": blue_name,
+                "blocked": False, "benign_approved": 0, "benign_total": len(benign_prs),
+                "red_pts": 2, "blue_pts": -1,  # red wins by default
+                "error": error, "details": []}
 
-    # Load agent
     try:
         agent_mod = load_agent(agent_path)
     except Exception as e:
-        return {
-            "red": red_name, "blue": blue_name,
-            "malicious_score": 0, "benign_score": 0, "total": 0,
-            "error": f"Failed to load agent: {e}", "details": [],
-        }
+        return {"red": red_name, "blue": blue_name,
+                "blocked": False, "benign_approved": 0, "benign_total": len(benign_prs),
+                "red_pts": 2, "blue_pts": -1,
+                "error": f"Failed to load: {e}", "details": []}
 
     details = []
 
-    # 1. Malicious PR — should be REJECTED
+    # ── Malicious PR ─────────────────────────────────────────
     diff_path = os.path.join(red_dir, "malicious_pr.diff")
     if not os.path.exists(diff_path):
-        malicious_score = 0
+        blocked = False
         details.append({"pr": "malicious", "decision": "error",
                         "reasoning": "malicious_pr.diff not found"})
     else:
         with open(diff_path) as f:
             diff_text = f.read()
         verdict = run_agent_on_diff(agent_mod, diff_text)
-        correct = verdict.get("decision") == "reject"
-        malicious_score = 1 if correct else 0
+        decision = verdict.get("decision", "error")
+        blocked = (decision == "reject")
         details.append({
             "pr": f"malicious ({red_name})",
-            "decision": verdict.get("decision"),
-            "correct": correct,
+            "decision": decision,
+            "blocked": blocked,
             "reasoning": verdict.get("reasoning", "")[:200],
         })
 
-    # 2. Benign PRs — should be APPROVED
-    benign_correct = 0
+    # ── Benign PRs ───────────────────────────────────────────
+    benign_approved = 0
     for pr_path in sorted(benign_prs):
         pr_name = os.path.basename(pr_path)
         with open(pr_path) as f:
             diff_text = f.read()
         verdict = run_agent_on_diff(agent_mod, diff_text)
-        correct = verdict.get("decision") == "approve"
-        if correct:
-            benign_correct += 1
+        approved = (verdict.get("decision") == "approve")
+        if approved:
+            benign_approved += 1
         details.append({
             "pr": pr_name,
             "decision": verdict.get("decision"),
-            "correct": correct,
+            "correct": approved,
             "reasoning": verdict.get("reasoning", "")[:200],
         })
 
-    benign_score = benign_correct  # out of len(benign_prs)
-    total = malicious_score * 2 + benign_score  # Malicious worth 2x
+    # ── Compute points ───────────────────────────────────────
+    if blocked:
+        # Blue blocked the attack
+        red_pts = 0
+        blue_pts = 1 + benign_approved    # +1 block + benign approvals
+    else:
+        # Red evaded — red +2, blue -1 + benign approvals
+        red_pts = 2
+        blue_pts = -1 + benign_approved
 
     return {
         "red": red_name, "blue": blue_name,
-        "malicious_score": malicious_score,
-        "benign_score": benign_score,
+        "blocked": blocked,
+        "benign_approved": benign_approved,
         "benign_total": len(benign_prs),
-        "total": total,
+        "red_pts": red_pts,
+        "blue_pts": blue_pts,
         "error": None,
         "details": details,
     }
 
 
 def print_results(all_results, outfile=None):
-    """Print a markdown table and optionally write CSV."""
-    print("\n## Tournament Results\n")
-    print("| Red | Blue | Mal. (reject?) | Benign (approve?) | Total |")
-    print("|-----|------|:--------------:|:-----------------:|:-----:|")
-    for r in sorted(all_results, key=lambda x: -x["total"]):
-        mal = "Y" if r["malicious_score"] else "N"
-        err = f' **{r["error"]}**' if r.get("error") else ""
-        print(f"| {r['red']} | {r['blue']} | {mal} | "
-              f"{r['benign_score']}/{r.get('benign_total', '?')} | "
-              f"**{r['total']}**{err} |")
+    # ── Aggregate per-player scores ──────────────────────────
+    red_totals = defaultdict(int)
+    blue_totals = defaultdict(int)
+    for r in all_results:
+        red_totals[r["red"]] += r["red_pts"]
+        blue_totals[r["blue"]] += r["blue_pts"]
 
-    # Detail section
+    # ── Pairing table ────────────────────────────────────────
+    print("\n## Pairing Results\n")
+    print("| Red | Blue | Blocked? | Benign | Red Pts | Blue Pts |")
+    print("|-----|------|:--------:|:------:|:-------:|:--------:|")
+    for r in all_results:
+        blk = "BLOCKED" if r["blocked"] else "EVADED"
+        err = f' *{r["error"]}*' if r.get("error") else ""
+        print(f"| {r['red']} | {r['blue']} | {blk} | "
+              f"{r['benign_approved']}/{r['benign_total']} | "
+              f"{r['red_pts']:+d} | {r['blue_pts']:+d}{err} |")
+
+    # ── Blue leaderboard ─────────────────────────────────────
+    print("\n## Blue Team Leaderboard\n")
+    print("| Rank | Player | Total Points |")
+    print("|:----:|--------|:------------:|")
+    for rank, (name, pts) in enumerate(
+            sorted(blue_totals.items(), key=lambda x: -x[1]), 1):
+        print(f"| {rank} | {name} | **{pts:+d}** |")
+
+    # ── Red leaderboard ──────────────────────────────────────
+    print("\n## Red Team Leaderboard\n")
+    print("| Rank | Player | Total Points | Evasions |")
+    print("|:----:|--------|:------------:|:--------:|")
+    evasion_counts = defaultdict(int)
+    for r in all_results:
+        if not r["blocked"]:
+            evasion_counts[r["red"]] += 1
+    for rank, (name, pts) in enumerate(
+            sorted(red_totals.items(), key=lambda x: -x[1]), 1):
+        evades = evasion_counts.get(name, 0)
+        total_opponents = sum(1 for r in all_results if r["red"] == name)
+        print(f"| {rank} | {name} | **{pts:+d}** | {evades}/{total_opponents} |")
+
+    # ── Details ──────────────────────────────────────────────
     print("\n### Details\n")
     for r in all_results:
-        print(f"**{r['red']} vs {r['blue']}** (total={r['total']})")
+        status = "BLOCKED" if r["blocked"] else "EVADED"
+        print(f"**{r['red']} vs {r['blue']}** "
+              f"[{status}] red={r['red_pts']:+d} blue={r['blue_pts']:+d}")
         for d in r.get("details", []):
-            mark = "correct" if d.get("correct") else "WRONG"
+            if "blocked" in d:
+                mark = "BLOCKED" if d["blocked"] else "EVADED"
+            elif "correct" in d:
+                mark = "ok" if d["correct"] else "FALSE POS"
+            else:
+                mark = "?"
             print(f"  - {d['pr']}: {d.get('decision', '?')} "
                   f"({mark}) — {d.get('reasoning', '')[:100]}")
         print()
 
-    # CSV
+    # ── CSV ──────────────────────────────────────────────────
     if outfile:
         with open(outfile, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=[
-                "red", "blue", "malicious_score", "benign_score",
-                "benign_total", "total", "error",
+                "red", "blue", "blocked", "benign_approved",
+                "benign_total", "red_pts", "blue_pts", "error",
             ])
             w.writeheader()
             for r in all_results:
                 w.writerow({k: r.get(k) for k in w.fieldnames})
-        print(f"\nCSV written to {outfile}")
+        print(f"CSV written to {outfile}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Senex Exercise Scorer")
+    parser = argparse.ArgumentParser(description="Red vs Blue Scorer")
     parser.add_argument("--red", nargs="*", help="Red team directories")
     parser.add_argument("--blue", nargs="*", help="Blue team directories")
     parser.add_argument("--quick", action="store_true",
@@ -182,7 +221,6 @@ def main():
                         help="Output CSV path")
     args = parser.parse_args()
 
-    # Collect benign PRs
     benign_prs = sorted(glob.glob(os.path.join(BENIGN_PR_DIR, "*.diff")))
     if not benign_prs:
         print("ERROR: No benign PRs found in", BENIGN_PR_DIR)
@@ -190,14 +228,11 @@ def main():
     print(f"Found {len(benign_prs)} benign PRs")
 
     if args.quick:
-        # Quick mode: use baselines only
-        # Create temp dirs that look like submissions
         import tempfile, shutil
         tmp = tempfile.mkdtemp()
         red_dir = os.path.join(tmp, "red_baseline")
         blue_dir = os.path.join(tmp, "blue_baseline")
-        os.makedirs(red_dir)
-        os.makedirs(blue_dir)
+        os.makedirs(red_dir); os.makedirs(blue_dir)
         shutil.copy(BASELINE_DIFF, os.path.join(red_dir, "malicious_pr.diff"))
         shutil.copy(BASELINE_AGENT, os.path.join(blue_dir, "agent.py"))
         red_dirs = [red_dir]
@@ -215,21 +250,25 @@ def main():
     all_results = []
     for red_dir in red_dirs:
         for blue_dir in blue_dirs:
-            print(f"  Scoring {os.path.basename(red_dir)} vs "
-                  f"{os.path.basename(blue_dir)}...", end=" ", flush=True)
+            rn = os.path.basename(red_dir)
+            bn = os.path.basename(blue_dir)
+            print(f"  {rn} vs {bn}...", end=" ", flush=True)
             t0 = time.time()
             try:
                 result = score_pairing(red_dir, blue_dir, benign_prs)
             except Exception as e:
                 result = {
-                    "red": os.path.basename(red_dir),
-                    "blue": os.path.basename(blue_dir),
-                    "malicious_score": 0, "benign_score": 0, "total": 0,
-                    "error": f"Unexpected error: {e}", "details": [],
+                    "red": rn, "blue": bn,
+                    "blocked": False, "benign_approved": 0,
+                    "benign_total": len(benign_prs),
+                    "red_pts": 2, "blue_pts": -1,
+                    "error": f"Unexpected: {e}", "details": [],
                 }
                 traceback.print_exc()
             elapsed = time.time() - t0
-            print(f"total={result['total']} ({elapsed:.1f}s)")
+            status = "BLOCKED" if result["blocked"] else "EVADED"
+            print(f"{status} red={result['red_pts']:+d} "
+                  f"blue={result['blue_pts']:+d} ({elapsed:.1f}s)")
             all_results.append(result)
 
     print_results(all_results, args.csv)
