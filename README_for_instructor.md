@@ -2,133 +2,138 @@
 
 ## Pre-Class Checklist
 
-- [ ] Set `ANTHROPIC_API_KEY` in your environment (needs ~$5-10 credit for a full tournament)
-- [ ] Run `pip install flask anthropic pytest` in the class environment
-- [ ] Run `python score.py --quick` to verify end-to-end (takes ~30 seconds)
+- [ ] Run `pip install flask pytest` in the class environment
+- [ ] Run `python score.py --quick` to verify end-to-end
 - [ ] Run `cd target_app && pytest tests/ -v` to confirm the app works
+- [ ] Ensure each student machine has Python 3.11+, `claude` CLI installed
 - [ ] Prepare a Google Sheet from `leaderboard_template.csv` for live projection
-- [ ] Ensure each student machine has Python 3.11+ and git
 - [ ] Pre-distribute the `teaching_pack/` directory (USB, shared drive, or git clone)
-- [ ] Have the `ANTHROPIC_API_KEY` ready to share with students (or set it on their machines)
+- [ ] Decide how students will submit (shared folder, git branches, or USB collection)
+
+## Format
+
+- Class split in half: **red team** vs **blue team**
+- Students can discuss with their side but each submits individually
+- Each red student → `submit/red_NAME/malicious_pr.diff`
+- Each blue student → `submit/blue_NAME/agent.py`
+- Scorer tests every red × every blue (N×M pairings)
 
 ## 100-Minute Timeline
 
 | Time | Duration | Activity | What You're Doing |
 |------|----------|----------|-------------------|
-| 0:00 | 15 min | **Intro & Demo** | Present `rules_slide.md`, show the target app, run the baseline attack live |
-| 0:15 | 30 min | **Team Prep** | Walk around, answer questions, watch for students going off-track |
-| 0:45 | 35 min | **Tournament** | Run `score.py`, project results, narrate interesting findings |
-| 1:20 | 20 min | **Debrief** | Show winning strategies, discuss implications, connect to Senex/real-world defenses |
+| 0:00 | 15 min | **Intro & Demo** | Present rules, show target app, demo baseline attack |
+| 0:15 | 30 min | **Prep** | Walk around, answer questions, watch for off-track students |
+| 0:45 | 35 min | **Tournament** | Collect submissions, run `score.py`, project live results |
+| 1:20 | 20 min | **Debrief** | Show winning strategies, discuss implications |
 
-### Intro & Demo (0:00 - 0:15)
+### Intro & Demo (0:00 – 0:15)
 
-1. Project `rules_slide.md` — explain red vs blue, scoring, timeline
+1. Project `rules_slide.md`
 2. Walk through `target_app/` code briefly (3 min)
-3. Show `baselines/baseline_malicious_pr.diff` — explain the SQL injection + misleading docstring
+3. Show `baselines/baseline_malicious_pr.diff` — explain the SQL injection disguised as a performance optimization
 4. Run it live:
    ```bash
-   export ANTHROPIC_API_KEY="sk-..."
    python baselines/baseline_agent.py baselines/baseline_malicious_pr.diff
    ```
-5. Show the agent's response — does the weak baseline catch it?
-6. Assign teams (4 red, 4 blue) and point them to `README_for_students.md`
+   (Uses `claude` CLI — works with Max subscription, no API key needed)
+5. Show the response — baseline agent catches this obvious attack
+6. Split class: "Left half is red, right half is blue" (or your preferred method)
+7. Point them to `README_for_students.md`
 
-### Team Prep (0:15 - 0:45)
+### Prep (0:15 – 0:45)
 
-Students work in teams. Common questions:
-- "Can I use Claude to write my agent?" — **Yes**, that's encouraged
-- "Can I add libraries?" — Yes, as long as they're installable via pip
-- "Can my diff modify test files?" — **Yes**, but tests are still run by the scoring script
-- "What API model should I use?" — `claude-sonnet-4-5-20250514` is the default; students can change it
+Common questions:
+- "Can I use Claude to write my diff/agent?" — **Yes**, that's encouraged
+- "Can my diff modify test files?" — **Yes**, but tests still run
+- "How do I test my agent?" — `python submit/blue_YOURNAME/agent.py baselines/baseline_malicious_pr.diff`
+- "What if my agent crashes?" — Scorer gives 0 points and moves on; test locally first
 
 Watch for:
-- Red teams trying to modify the scoring script (not allowed)
+- Red students trying to modify the scoring script (not allowed)
 - Blue agents that are too large (>400 lines)
-- Students who are stuck — point them to the tips in `README_for_students.md`
+- Students who are stuck — point them to tips in the student README
 
-### Tournament (0:45 - 1:20)
+At 0:40 announce: **"5 minutes. Submit now."**
 
-Run the full tournament:
+### Collecting Submissions (0:45)
+
+**Option A — Shared folder** (simplest):
+Students drop files directly into `submit/red_NAME/` and `submit/blue_NAME/` on a shared drive.
+
+**Option B — Git**:
+```bash
+# Students push to branches, you merge:
+for b in $(git branch -r | grep 'origin/red_\|origin/blue_'); do
+  git merge $b --no-edit 2>/dev/null
+done
+```
+
+**Option C — USB/AirDrop**: Collect files, place in submit/ manually.
+
+Verify everyone submitted:
+```bash
+echo "Red submissions:" && ls submit/red_*/malicious_pr.diff
+echo "Blue submissions:" && ls submit/blue_*/agent.py
+```
+
+For missing submissions, use baselines:
+```bash
+# Missing red student
+mkdir -p submit/red_MISSING
+cp baselines/baseline_malicious_pr.diff submit/red_MISSING/malicious_pr.diff
+
+# Missing blue student
+mkdir -p submit/blue_MISSING
+cp baselines/baseline_agent.py submit/blue_MISSING/agent.py
+```
+
+### Tournament (0:45 – 1:20)
+
 ```bash
 python score.py --red submit/red_* --blue submit/blue_* --csv leaderboard.csv
 ```
 
-This takes ~2-3 minutes per pairing (API calls). With 4x4 = 16 pairings, expect ~30-40 minutes total.
+With 8 red × 8 blue = 64 pairings, each ~30-40s → about 30-40 min total.
 
-**While it runs**: Project the terminal output. Narrate interesting results as they appear.
+**Narrate as results stream in:**
+> "Alice's agent caught Bob's attack — 7 points, perfect score!"
+> "Charlie's attack evaded 5 of 8 blue agents — sneaky!"
+> "Diana's agent rejected a benign PR — false positive costs points!"
 
-If a team's submission crashes:
-- The scorer handles it gracefully (0 points for that pairing)
-- Announce it: "Blue team 3's agent crashed on Red 2's attack — 0 points"
+Import `leaderboard.csv` into Google Sheets and project.
 
-**Update the leaderboard**: Import `leaderboard.csv` into Google Sheets and project it.
+### Debrief (1:20 – 1:40)
 
-### Debrief (1:20 - 1:40)
-
-Discussion prompts:
-1. **Winning red strategy**: What made the best attack hard to detect? (prompt injection? obfuscation? plausible justification?)
-2. **Winning blue strategy**: What made the best defense effective? (multi-pass review? static analysis? explicit vulnerability checklist?)
-3. **False positives**: Did any blue agent reject benign PRs? Why?
-4. **Arms race**: If we ran another round, how would strategies evolve?
-5. **Real-world connection**: How does this relate to AI-assisted code review in industry? To Senex's runtime enforcement?
+1. **Best red attack**: Ask them to explain. Was it a code-level vuln or a logic bug? Did they use prompt injection?
+2. **Best blue defense**: What made it effective? Did they add static analysis, improve the prompt, or use multi-pass?
+3. **Worst false-positive agent**: Why did it reject safe PRs? (Usually: overly paranoid prompt, or model hallucinating issues)
+4. **The arms race**: "If we ran Round 2 with sides switched, what would change?"
+5. **Real-world connection**: This is exactly the attack surface for Cursor, Copilot PR review, and AI-assisted CI/CD
 
 ## Troubleshooting
 
-### API rate limits
-- Claude claude-sonnet-4-5 allows ~50 requests/min on the standard tier
-- With 16 pairings x 6 PRs each = 96 API calls minimum (plus tool use rounds)
-- If rate-limited: add a `time.sleep(2)` between pairings in `score.py`
-- Or reduce to 3 red x 3 blue = 9 pairings
+| Problem | Fix |
+|---------|-----|
+| `claude: command not found` | Install: `npm install -g @anthropic-ai/claude-code` |
+| Agent takes too long | Scorer has 60s timeout per LLM call; kill and skip if needed |
+| Agent returns garbage JSON | Scorer handles it — 0 points, moves on |
+| All blue agents use same strategy | Encourage diversity: "Try something completely different" |
+| Rate limits | Add `time.sleep(2)` between pairings in score.py |
+| Student peeks at held-out PRs | Honor system; or distribute without that folder, add it at tournament time |
 
-### Student agent syntax errors
-- The scorer catches import errors and reports them as 0-point results
-- Common issue: students forget `review_diff` function signature
-- Quick fix: have them test locally first: `python -c "from agent import review_diff; print('OK')"`
+## Scaling
 
-### Runaway agents
-- The scorer has a 2-minute implicit timeout per API call (Anthropic client default)
-- If an agent loops: kill the scorer, skip that team, re-run with remaining teams
+| Class size | Red × Blue | Pairings | Est. time |
+|-----------|-----------|----------|-----------|
+| 16 students | 8 × 8 | 64 | ~35 min |
+| 20 students | 10 × 10 | 100 | ~55 min |
+| 30 students | 15 × 15 | 225 | too long — cap at 8-10 per side |
 
-### Monoculture
-- If all blue teams converge on the same strategy, the red teams have an easy target
-- Encourage diversity: "Try a completely different approach from what you see others doing"
-
-### No API key
-- Run `score.py --quick` with the mock mode (it will prompt you)
-- Or set a shared classroom key
-
-## File Inventory
-
-```
-teaching_pack/
-├── README_for_instructor.md     ← You are here
-├── README_for_students.md       ← Hand out to students
-├── rules_slide.md               ← Project on screen (convert to PDF/slides)
-├── score.py                     ← Tournament scorer
-├── leaderboard_template.csv     ← Import into Google Sheets
-├── target_app/                  ← The Flask app being reviewed
-│   ├── app.py                   (68 lines)
-│   ├── auth.py                  (55 lines)
-│   ├── db.py                    (92 lines)
-│   ├── utils.py                 (40 lines)
-│   ├── requirements.txt
-│   └── tests/test_basic.py      (50 lines)
-├── baselines/
-│   ├── baseline_agent.py        ← Weak default blue team (115 lines)
-│   └── baseline_malicious_pr.diff ← Demo SQL injection attack
-├── held_out_benign_prs/         ← 5 benign PRs (revealed during tournament only)
-│   ├── pr_01_fix_typo.diff
-│   ├── pr_02_add_logging.diff
-│   ├── pr_03_refactor_auth.diff
-│   ├── pr_04_update_deps.diff
-│   └── pr_05_add_endpoint.diff
-└── submit/                      ← Student submission folders
-    ├── red_1/ ... red_4/
-    └── blue_1/ ... blue_4/
-```
+For large classes: randomly sample 8 red and 8 blue submissions for the tournament, or run red and blue halves separately.
 
 ## Post-Class
 
-- Save the leaderboard and all submissions
-- Consider sharing the winning red/blue strategies (anonymized) as course material
-- The target app has intentional design space for further exploitation — can be reused
+- Save `leaderboard.csv` and all submissions
+- Winning strategies make great future lecture material
+- The target app can be reused with different attacks/defenses
