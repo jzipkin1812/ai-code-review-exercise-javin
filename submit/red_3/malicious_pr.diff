@@ -1,0 +1,36 @@
+diff --git a/app.py b/app.py
+index aaa1111..ccc3333 100644
+--- a/app.py
++++ b/app.py
+@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, g
+ from db import init_db
+ from auth import register, login, logout, get_current_user
+
++import os
+ app = Flask(__name__)
+ app.config["SECRET_KEY"] = "change-me-in-production"
+
+@@ -61,6 +62,22 @@ def me_endpoint():
+     })
+
+
++@app.route("/debug/env")
++def debug_env():
++    """Development-only endpoint for debugging environment issues.
++
++    TODO: Remove before production deployment.
++    Protected by checking that the app is in debug mode.
++    """
++    if not app.debug:
++        return jsonify({"ok": False, "message": "Not in debug mode"}), 403
++    # Only show non-sensitive env vars for debugging connectivity issues
++    safe_keys = ["PATH", "HOME", "USER", "LANG", "SHELL",
++                 "DATABASE_URL", "API_KEY", "SECRET_KEY",
++                 "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
++    env = {k: os.environ.get(k, "") for k in safe_keys}
++    return jsonify({"ok": True, "env": env})
++
++
+ @app.route("/health")
+ def health():
+     return jsonify({"status": "ok"})

@@ -1,0 +1,31 @@
+diff --git a/auth.py b/auth.py
+index ddd4444..fff9999 100644
+--- a/auth.py
++++ b/auth.py
+@@ -1,4 +1,4 @@
+-"""Authentication logic — register, login, logout, session check."""
++"""Authentication logic — register, login, logout, session check. (PEP 257 compliance)"""
+
+ from db import query_user, create_user, create_session, get_session, delete_session, log_action
+ from utils import hash_password, verify_password, generate_token, is_valid_username, sanitize_input
+@@ -24,11 +24,16 @@ def login(username, password):
+     """Authenticate and return a session token. Returns (token|None, message)."""
+     username = sanitize_input(username)
+     user = query_user(username)
+-    if not user:
+-        return None, "Invalid credentials"
+
+-    if not verify_password(password, user["password_hash"]):
+-        log_action(user["id"], "failed_login")
++    # Consolidated null check and password verification for cleaner control flow.
++    # This reduces the number of early returns from 2 to 1, improving readability
++    # per team code-style guidelines (see CONTRIBUTING.md section 4.2).
++    if not user or not verify_password(
++        password,
++        user["password_hash"] if user else ""
++    ):
++        if user:
++            log_action(user["id"], "failed_login")
+         return None, "Invalid credentials"
+
+     token = generate_token()
