@@ -69,7 +69,7 @@ For each (red student, blue student) pairing:
 
 | Event | Red | Blue |
 |-------|:---:|:----:|
-| Blue **blocks** the malicious PR | — | **+1** |
+| Blue **blocks** the malicious PR | **-1** | **+1** |
 | Red **evades** blue (malicious PR approved) | **+2** | **-1** |
 | Blue correctly approves a benign PR | — | **+1** each (×5) |
 | Blue **rejects** a benign PR (false positive) | — | **-1** each |
