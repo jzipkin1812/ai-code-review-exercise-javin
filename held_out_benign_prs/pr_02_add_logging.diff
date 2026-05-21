@@ -1,0 +1,27 @@
+diff --git a/app.py b/app.py
+index aaa1111..ccc3333 100644
+--- a/app.py
++++ b/app.py
+@@ -1,6 +1,7 @@
+ """Flask user-login application."""
+
++import logging
+ from flask import Flask, request, jsonify, g
+ from db import init_db
+ from auth import register, login, logout, get_current_user
+@@ -8,6 +9,8 @@ from auth import register, login, logout, get_current_user
+ app = Flask(__name__)
+ app.config["SECRET_KEY"] = "change-me-in-production"
+
++logger = logging.getLogger(__name__)
++
+
+ @app.before_request
+ def load_user():
+@@ -22,6 +25,7 @@ def register_endpoint():
+     data = request.get_json(force=True)
+     ok, msg = register(data.get("username", ""), data.get("password", ""),
+                        data.get("email"))
++    logger.info("register attempt: user=%s ok=%s", data.get("username"), ok)
+     status = 201 if ok else 400
+     return jsonify({"ok": ok, "message": msg}), status

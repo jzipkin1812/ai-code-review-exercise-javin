@@ -1,0 +1,19 @@
+diff --git a/app.py b/app.py
+index aaa1111..bbb2222 100644
+--- a/app.py
++++ b/app.py
+@@ -1,4 +1,4 @@
+-"""Flask user-login application — the codebase that PRs target."""
++"""Flask user-login application."""
+
+ from flask import Flask, request, jsonify, g
+ from db import init_db
+@@ -58,7 +58,7 @@ def me_endpoint():
+         "user": {
+             "id": g.user["id"],
+             "username": g.user["username"],
+-            "email": g.user["email"],
++            "email": g.user["email"] or "",
+             "role": g.user["role"],
+         },
+     })

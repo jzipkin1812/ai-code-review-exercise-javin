@@ -1,0 +1,22 @@
+diff --git a/auth.py b/auth.py
+index ddd4444..eee5555 100644
+--- a/auth.py
++++ b/auth.py
+@@ -7,6 +7,8 @@ from utils import hash_password, verify_password, generate_token, is_valid_usern
+ def register(username, password, email=None):
+     """Register a new user. Returns (success: bool, message: str)."""
+     username = sanitize_input(username)
++    if email:
++        email = sanitize_input(email)
+     password = sanitize_input(password)
+
+     if not is_valid_username(username):
+@@ -16,7 +18,7 @@ def register(username, password, email=None):
+     if query_user(username):
+         return False, "Username already taken"
+
+-    pw_hash = hash_password(password)
++    pw_hash = hash_password(password)  # uses random salt internally
+     user_id = create_user(username, pw_hash, email)
+     log_action(user_id, "register")
+     return True, "Registration successful"
