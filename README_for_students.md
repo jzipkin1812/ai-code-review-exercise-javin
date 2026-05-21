@@ -94,18 +94,45 @@ This exercise mirrors real threats in the software supply chain:
 ## Getting Started
 
 ```bash
-# Install dependencies
+# 1. Clone the repo
+git clone https://github.com/fredfeng/ai-code-review-exercise.git
+cd ai-code-review-exercise
+
+# 2. Create YOUR branch (use your name — lowercase, no spaces)
+git checkout -b red_alice      # if you're on red team
+# OR
+git checkout -b blue_bob       # if you're on blue team
+
+# 3. Install dependencies
 pip install flask pytest
 
-# Run the target app
-cd target_app && python app.py
+# 4. Explore the target app
+cd target_app && python app.py         # run the app
+cd target_app && pytest tests/ -v      # run tests
+cd ..
 
-# Run tests
-cd target_app && pytest tests/ -v
-
-# Test the baseline agent on the demo malicious PR
+# 5. Test the baseline agent
 python baselines/baseline_agent.py baselines/baseline_malicious_pr.diff
-
-# Test your own agent
-python submit/blue_YOURNAME/agent.py baselines/baseline_malicious_pr.diff
 ```
+
+## How to Submit
+
+```bash
+# Red team — create your folder and files
+mkdir -p submit/red_YOURNAME
+# ... create malicious_pr.diff and notes.md in that folder ...
+
+# Blue team — create your folder and files
+mkdir -p submit/blue_YOURNAME
+# ... create agent.py in that folder ...
+
+# Test your agent locally before submitting
+python submit/blue_YOURNAME/agent.py baselines/baseline_malicious_pr.diff
+
+# Push your branch
+git add submit/
+git commit -m "My submission"
+git push origin red_YOURNAME    # or blue_YOURNAME
+```
+
+The instructor will collect all branches at the deadline. **Do not push to main.**
