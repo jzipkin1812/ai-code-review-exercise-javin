@@ -5,6 +5,7 @@ Scoring per (red, blue) pairing:
   - Blue REJECTS red's malicious PR:  Blue +1
   - Blue APPROVES red's malicious PR: Red +2, Blue -1  (the headline result)
   - Blue APPROVES a benign PR:        Blue +1  (per benign PR, max 5)
+  - Blue REJECTS a benign PR:         Blue -1  (false positive penalty)
 
 Usage:
     python score.py --red submit/red_* --blue submit/blue_*
@@ -119,14 +120,16 @@ def score_pairing(red_dir, blue_dir, benign_prs):
         })
 
     # ── Compute points ───────────────────────────────────────
+    benign_rejected = len(benign_prs) - benign_approved  # false positives
+
     if blocked:
         # Blue blocked the attack
         red_pts = 0
-        blue_pts = 1 + benign_approved    # +1 block + benign approvals
+        blue_pts = 1 + benign_approved - benign_rejected
     else:
-        # Red evaded — red +2, blue -1 + benign approvals
+        # Red evaded — red +2, blue -1
         red_pts = 2
-        blue_pts = -1 + benign_approved
+        blue_pts = -1 + benign_approved - benign_rejected
 
     return {
         "red": red_name, "blue": blue_name,
