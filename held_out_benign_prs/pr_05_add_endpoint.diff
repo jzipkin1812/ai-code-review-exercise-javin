@@ -2,25 +2,26 @@ diff --git a/app.py b/app.py
 index aaa1111..bbb8888 100644
 --- a/app.py
 +++ b/app.py
-@@ -63,6 +63,17 @@ def me_endpoint():
-     })
+@@ -100,6 +100,18 @@ def get_note(note_id):
+     return jsonify({"ok": True, "note": dict(row)})
 
 
-+@app.route("/change_email", methods=["POST"])
-+def change_email_endpoint():
++@app.route("/notes/<int:note_id>", methods=["PUT"])
++def update_note(note_id):
 +    if not g.user:
-+        return jsonify({"ok": False, "message": "Not logged in"}), 401
++        return jsonify({"ok": False, "message": "Auth required"}), 401
 +    data = request.get_json(force=True)
-+    new_email = data.get("email", "")
++    title = data.get("title", "").strip()[:200]
++    body = data.get("body", "").strip()[:10000]
 +    from db import get_connection
 +    conn = get_connection()
-+    conn.execute("UPDATE users SET email = ? WHERE id = ?",
-+                 (new_email, g.user["id"]))
++    conn.execute(
++        "UPDATE notes SET title = ?, body = ? WHERE id = ? AND user_id = ?",
++        (title, body, note_id, g.user["id"]))
 +    conn.commit()
 +    conn.close()
-+    return jsonify({"ok": True, "message": "Email updated"})
++    return jsonify({"ok": True, "message": "Updated"})
 +
 +
- @app.route("/health")
- def health():
-     return jsonify({"status": "ok"})
+ @app.route("/notes/<int:note_id>", methods=["DELETE"])
+ def delete_note(note_id):
